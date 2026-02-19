@@ -78,7 +78,7 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 920, margin: "60px auto", padding: "0 16px" }}>
       <h1 style={{ textAlign: "center", fontSize: 34, marginBottom: 18 }}>
-        노션 도서 위젯
+        
       </h1>
 
       <form
@@ -90,7 +90,7 @@ export default function Home() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="책 제목/저자를 입력하세요"
           style={{
-            width: 520,
+            width: 320,
             height: 44,
             padding: "0 14px",
             borderRadius: 8,
