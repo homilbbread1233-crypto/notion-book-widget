@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const NOTION_TOKEN = process.env.NOTION_TOKEN!;
-const NOTION_DB_ID = process.env.NOTION_DB_ID!;
+const NOTION_TOKEN = process.env.NOTION_API_KEY!;
+const NOTION_DB_ID = process.env.NOTION_DATABASE_ID!;
 const NOTION_VERSION = process.env.NOTION_VERSION ?? "2022-06-28";
 
 function json(data: any, status = 200) {
