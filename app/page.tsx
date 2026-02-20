@@ -1,29 +1,50 @@
-async function saveToNotion(book: any) {
-  try {
-    const res = await fetch("/api/notion", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title: book.title,
-        author: book.author,
-        link: book.link,
-        publisher: book.publisher, // ✅ 출판사 추가
-      }),
-    });
+"use client";
 
-    const data = await res.json();
+import { useState } from "react";
 
-    if (!res.ok) {
-      console.error("Notion 저장 실패:", data);
-      alert("노션 저장 실패");
-      return;
+type Book = {
+  title: string;
+  author: string;
+  link: string;
+  publisher?: string;
+};
+
+export default function Page() {
+  const [saving, setSaving] = useState(false);
+
+  async function saveToNotion(book: Book) {
+    try {
+      setSaving(true);
+
+      const res = await fetch("/api/notion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: book.title,
+          author: book.author,
+          link: book.link,
+          publisher: book.publisher ?? "",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("Notion 저장 실패:", data);
+        alert("노션 저장 실패");
+        return;
+      }
+
+      alert("노션에 저장됨 ✅");
+    } finally {
+      setSaving(false);
     }
-
-    alert("노션에 저장됨 ✅");
-  } catch (err) {
-    console.error(err);
-    alert("에러 발생");
   }
+
+  return (
+    <main>
+      {/* ✅ 여기 아래에 기존 검색 UI/리스트를 넣어 */}
+      {/* 예: <button onClick={() => saveToNotion(item)} disabled={saving}>노션에 저장</button> */}
+    </main>
+  );
 }
