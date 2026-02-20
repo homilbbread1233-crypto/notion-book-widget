@@ -10,41 +10,44 @@ type Book = {
 };
 
 export default function Page() {
-  const [saving, setSaving] = useState(false);
+  const [q, setQ] = useState("");
 
   async function saveToNotion(book: Book) {
-    try {
-      setSaving(true);
-
-      const res = await fetch("/api/notion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: book.title,
-          author: book.author,
-          link: book.link,
-          publisher: book.publisher ?? "",
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        console.error("Notion 저장 실패:", data);
-        alert("노션 저장 실패");
-        return;
-      }
-
-      alert("노션에 저장됨 ✅");
-    } finally {
-      setSaving(false);
-    }
+    const res = await fetch("/api/notion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(book),
+    });
+    const data = await res.json();
+    if (!res.ok) console.error(data);
+    else alert("저장됨 ✅");
   }
 
   return (
-    <main>
-      {/* ✅ 여기 아래에 기존 검색 UI/리스트를 넣어 */}
-      {/* 예: <button onClick={() => saveToNotion(item)} disabled={saving}>노션에 저장</button> */}
+    <main style={{ padding: 24 }}>
+      <h1>도서 검색/추가</h1>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="책 제목/저자를 입력하세요"
+          style={{ padding: 10, width: 320, border: "1px solid #ccc", borderRadius: 8 }}
+        />
+        <button
+          onClick={() =>
+            saveToNotion({
+              title: q || "테스트 제목",
+              author: "테스트 저자",
+              link: "https://example.com",
+              publisher: "테스트 출판사",
+            })
+          }
+          style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #ccc" }}
+        >
+          테스트 저장
+        </button>
+      </div>
     </main>
   );
 }

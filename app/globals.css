@@ -133,3 +133,48 @@ body {
   font-size: 13px;
   text-align: center;
 }
+/* ===== Book Search UI ===== */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.searchInput {
+  width: 520px;              /* 필요하면 600px로 */
+  height: 52px;
+  padding: 0 18px;
+  border: 1px solid #e5e7eb; /* 연한 회색 */
+  border-radius: 14px;
+  font-size: 16px;
+  outline: none;
+  background: #fff;
+}
+
+.searchInput::placeholder {
+  color: #9ca3af;
+}
+
+.searchInput:focus {
+  border-color: #d1d5db;
+  box-shadow: 0 0 0 4px rgba(209, 213, 219, 0.35);
+}
+
+.searchBtn {
+  height: 52px;
+  padding: 0 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.searchBtn:hover {
+  background: #f9fafb;
+}
+
+.searchBtn:active {
+  transform: translateY(1px);
+}
