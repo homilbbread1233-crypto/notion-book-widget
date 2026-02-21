@@ -63,10 +63,11 @@ export async function POST(req: Request) {
     }
 
     // ✅ 출판사 보강
-    let finalPublisher = publisher?.trim();
-    if (!finalPublisher && isbn13) {
-      finalPublisher = await lookupPublisherByIsbn13(isbn13);
-    }
+    let finalPublisher: string | null = publisher?.trim() ?? null;
+
+if (!finalPublisher && isbn13) {
+  finalPublisher = await lookupPublisherByIsbn13(isbn13);
+}
 
     // ✅ Notion properties (DB 속성명과 정확히 일치해야 함)
     const properties: any = {
