@@ -1,264 +1,384 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Book = {
   title: string;
   author: string;
   link: string;
+  cover?: string;
   publisher?: string;
-  cover?: string; // ✅ 표지 URL
+  isbn13?: string;
+};
+
+type SearchResponse = {
+  ok?: boolean;
+  books?: any[]; // { ok: true, books: [...] }
+  error?: string;
+  message?: string;
 };
 
 export default function Page() {
-  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<Book[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  async function handleSearch() {
-    const keyword = q.trim();
-    if (!keyword) return;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const canSearch = useMemo(() => query.trim().length > 0, [query]);
+
+  const normalizeBook = (raw: any): Book => ({
+    title: String(raw?.title ?? "").trim(),
+    author: String(raw?.author ?? "").trim(),
+    link: String(raw?.link ?? raw?.itemUrl ?? "").trim(),
+    cover: raw?.cover ?? raw?.coverUrl ?? raw?.image ?? undefined,
+    publisher: raw?.publisher ?? raw?.pub ?? undefined,
+    isbn13: raw?.isbn13 ?? raw?.isbn ?? undefined,
+  });
+
+  const searchBooks = async () => {
+    const q = query.trim();
+    if (!q) return;
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSubmittedQuery(q);
 
     try {
-      setLoading(true);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data: SearchResponse = await res.json().catch(() => ({} as any));
 
-      const res = await fetch(`/api/search?q=${encodeURIComponent(keyword)}`);
-      const data = await res.json();
+      if (!res.ok) {
+        setBooks([]);
+        setErrorMsg(data?.error || data?.message || "검색 요청이 실패했어.");
+        return;
+      }
 
-      const items = (data?.books ?? []) as any[];
-
-      const mapped: Book[] = Array.isArray(items)
-        ? items.map((it) => ({
-            title: it.title ?? "",
-            author: it.author ?? "",
-            link: it.link ?? "",
-            publisher: it.publisher ?? "",
-            cover: it.cover ?? it.coverUrl ?? it.image ?? "", // ✅ cover 매핑
-          }))
-        : [];
-
-      setResults(mapped);
-    } catch (e) {
-      console.error(e);
-      setResults([]);
+      const raw = Array.isArray((data as any)?.books) ? (data as any).books : [];
+      setBooks(raw.map(normalizeBook).filter((b: Book) => b.title));
+    } catch (e: any) {
+      setBooks([]);
+      setErrorMsg(e?.message || "네트워크 오류가 발생했어.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function saveToNotion(book: Book) {
+  const saveToNotion = async (book: Book) => {
+    const key = book.isbn13 || book.link || `${book.title}-${book.author}`;
+    setSavingKey(key);
+    setErrorMsg(null);
+
+    const payload = {
+      title: book.title,
+      author: book.author,
+      link: book.link,
+      cover: book.cover,
+      publisher: book.publisher,
+      isbn13: book.isbn13,
+    };
+
     try {
       const res = await fetch("/api/notion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: book.title,
-          author: book.author,
-          link: book.link,
-          publisher: book.publisher ?? "",
-          // cover도 노션에 저장하고 싶으면 route.ts/DB도 같이 맞춰야 함 (지금은 UI만)
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        console.error("Notion 저장 실패:", data);
-        alert("노션 저장 실패");
+        setErrorMsg(data?.message || "노션 저장 실패");
         return;
       }
 
-      alert("노션에 저장됨 ✅");
-    } catch (e) {
-      console.error(e);
-      alert("저장 중 에러 발생");
+      alert("노션 저장 완료");
+    } catch (e: any) {
+      setErrorMsg(e?.message || "저장 중 네트워크 오류");
+    } finally {
+      setSavingKey(null);
     }
-  }
+  };
+
+  // Enter로 검색
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") searchBooks();
+    };
+
+    el.addEventListener("keydown", onKeyDown);
+    return () => el.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   return (
     <main style={styles.page}>
-      <section style={styles.container}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSearch();
-          }}
-          style={styles.searchRow}
-        >
+      <div style={styles.searchWrap}>
+        <div style={styles.searchRow}>
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="책 제목/저자를 입력하세요"
             style={styles.input}
           />
-          <button type="submit" style={styles.button} disabled={loading}>
-            {loading ? "검색 중..." : "검색"}
+          <button
+            onClick={searchBooks}
+            disabled={!canSearch || loading}
+            style={{
+              ...styles.btn,
+              ...(canSearch && !loading ? {} : styles.btnDisabled),
+            }}
+          >
+            {loading ? "검색중" : "검색"}
           </button>
-        </form>
+        </div>
 
-        <div style={styles.results}>
-          {results.length > 0 &&
-            results.map((book, idx) => (
-              <div key={`${book.link}-${idx}`} style={styles.card}>
-                {/* ✅ 표지 */}
-                <div style={styles.coverWrap}>
-                  {book.cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={book.cover}
-                      alt=""
-                      style={styles.coverImg}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div style={styles.coverPlaceholder} />
-                  )}
-                </div>
+        {errorMsg && <div style={styles.error}>{errorMsg}</div>}
+      </div>
 
-                <div style={styles.cardMid}>
-                  <div style={styles.title}>{book.title || "(제목 없음)"}</div>
-                  <div style={styles.meta}>
-                    {book.author ? book.author : ""}
-                    {book.publisher ? ` · ${book.publisher}` : ""}
+      {/* 결과 */}
+      <section style={styles.results}>
+        {submittedQuery && (
+          <div style={styles.hint}>
+            검색어: <b>{submittedQuery}</b>
+          </div>
+        )}
+
+        {books.length === 0 && !loading && !errorMsg && submittedQuery && (
+          <div style={styles.empty}>검색 결과가 없어.</div>
+        )}
+
+        <div style={styles.list}>
+          {books.map((b, idx) => {
+            const key = b.isbn13 || b.link || `${b.title}-${b.author}-${idx}`;
+            const isSaving = savingKey === key;
+
+            return (
+              <div key={key} style={styles.item}>
+                <div style={styles.left}>
+                  <div style={styles.title} title={b.title}>
+                    {b.title}
                   </div>
-
-                  {book.link ? (
-                    <a
-                      href={book.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={styles.link}
-                    >
+                  <div style={styles.meta}>
+                    <span>{b.author || "저자 정보 없음"}</span>
+                    <span style={styles.dot}>•</span>
+                    <span>{b.publisher || "출판사 정보 없음"}</span>
+                  </div>
+                  <div style={styles.actions}>
+                    <a href={b.link} target="_blank" rel="noreferrer" style={styles.link}>
                       링크
                     </a>
-                  ) : null}
+                    <button
+                      onClick={() => saveToNotion(b)}
+                      disabled={isSaving}
+                      style={{ ...styles.save, ...(isSaving ? styles.saveDisabled : {}) }}
+                    >
+                      {isSaving ? "저장 중" : "노션에 저장"}
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  style={styles.saveBtn}
-                  onClick={() => saveToNotion(book)}
-                >
-                  노션에 저장
-                </button>
+                <div style={styles.coverBox}>
+                  {b.cover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={b.cover} alt="" style={styles.cover} />
+                  ) : (
+                    <div style={styles.noCover}>No Image</div>
+                  )}
+                </div>
               </div>
-            ))}
+            );
+          })}
         </div>
       </section>
     </main>
   );
 }
 
+const BORDER_COLOR = "rgba(0,0,0,0.18)"; // ✅ 검색창 테두리 색 기준(버튼 테두리/버튼 글자도 동일)
+
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    padding: "48px 16px",
     background: "#fff",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    paddingTop: 80,
+    paddingLeft: 16,
+    paddingRight: 16,
   },
-  container: {
+
+  searchWrap: {
     width: "100%",
-    maxWidth: 860,
+    maxWidth: 680,
   },
   searchRow: {
     display: "flex",
+    gap: 16,
     alignItems: "center",
-    gap: 14,
+    justifyContent: "center",
   },
+
+  // ✅ 요청: 검색창 가로 320으로 고정
   input: {
     width: 320,
-    height: 52,
+    height: 56,
+    borderRadius: 16,
+    border: `1px solid ${BORDER_COLOR}`,
+    background: "#fff",
     padding: "0 18px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
     fontSize: 16,
     outline: "none",
-    background: "#fff",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
   },
-  button: {
-    height: 52,
+
+  // ✅ 요청: 버튼 테두리 색 = 검색창 테두리 색, 버튼 글자 색도 동일하게
+  btn: {
+    height: 56,
+    minWidth: 92,
     padding: "0 18px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
+    borderRadius: 16,
+    border: `1px solid ${BORDER_COLOR}`,
     background: "#fff",
-    fontSize: 16,
     cursor: "pointer",
+    fontSize: 16,
+    color: BORDER_COLOR, // ✅ 글자색 통일
+    fontWeight: 600,
+    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
     whiteSpace: "nowrap",
   },
+  btnDisabled: {
+    opacity: 0.5,
+    cursor: "not-allowed",
+  },
+
+  error: {
+    marginTop: 12,
+    fontSize: 13,
+    color: "rgba(255,0,0,0.8)",
+    textAlign: "center",
+  },
+
   results: {
-    marginTop: 18,
+    width: "100%",
+    maxWidth: 680,
+    marginTop: 26,
+  },
+  hint: {
+    fontSize: 13,
+    color: "rgba(0,0,0,0.55)",
+    marginBottom: 10,
+  },
+  empty: {
+    padding: 14,
+    borderRadius: 14,
+    border: "1px dashed rgba(0,0,0,0.15)",
+    color: "rgba(0,0,0,0.6)",
+    fontSize: 14,
+  },
+  list: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
+    gap: 10,
   },
-  card: {
+  item: {
     display: "flex",
-    alignItems: "center",
+    justifyContent: "space-between",
     gap: 14,
-    padding: 16,
-    border: "1px solid #eef0f3",
-    borderRadius: 14,
+    padding: 14,
+    borderRadius: 18,
+    border: "1px solid rgba(0,0,0,0.08)",
     background: "#fff",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
   },
-
-  coverWrap: {
-    width: 56,
-    height: 80,
-    borderRadius: 10,
-    overflow: "hidden",
-    flexShrink: 0,
-    border: "1px solid #eef0f3",
-    background: "#fff",
-  },
-  coverImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  },
-  coverPlaceholder: {
-    width: "100%",
-    height: "100%",
-    background: "#f3f4f6",
-  },
-
-  cardMid: {
-    minWidth: 0,
+  left: {
     flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
   },
   title: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 700,
-    lineHeight: 1.3,
+    color: "rgba(0,0,0,0.85)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   meta: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#6b7280",
+    fontSize: 12,
+    color: "rgba(0,0,0,0.6)",
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
     overflow: "hidden",
-    textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  dot: {
+    opacity: 0.5,
+  },
+  actions: {
+    display: "flex",
+    gap: 8,
+    marginTop: 2,
   },
   link: {
-    display: "inline-block",
-    marginTop: 8,
-    fontSize: 13,
-    color: "#2563eb",
-    textDecoration: "none",
-  },
-  saveBtn: {
-    height: 40,
-    padding: "0 14px",
-    border: "1px solid #e5e7eb",
+    height: 34,
+    padding: "0 12px",
     borderRadius: 12,
+    border: "1px solid rgba(0,0,0,0.10)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textDecoration: "none",
+    color: "rgba(0,0,0,0.75)",
+    fontSize: 13,
     background: "#fff",
-    cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  save: {
+    height: 34,
+    padding: "0 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(0,0,0,0.10)",
+    background: "rgba(0,0,0,0.92)",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 13,
+    whiteSpace: "nowrap",
+  },
+  saveDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+  coverBox: {
+    width: 56,
+    height: 80,
+    borderRadius: 14,
+    overflow: "hidden",
+    border: "1px solid rgba(0,0,0,0.08)",
+    background: "rgba(0,0,0,0.03)",
     flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cover: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  noCover: {
+    fontSize: 11,
+    opacity: 0.6,
   },
 };
