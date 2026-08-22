@@ -89,10 +89,17 @@ export async function POST(req: Request) {
     const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 
     if (!NOTION_TOKEN) {
-      return NextResponse.json({ ok: false, message: "Missing NOTION_TOKEN" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, message: "Missing NOTION_TOKEN" },
+        { status: 500 }
+      );
     }
+
     if (!DATABASE_ID) {
-      return NextResponse.json({ ok: false, message: "Missing NOTION_DATABASE_ID" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, message: "Missing NOTION_DATABASE_ID" },
+        { status: 500 }
+      );
     }
 
     const { title, author, link, cover, publisher, isbn13 } = body;
@@ -104,30 +111,38 @@ export async function POST(req: Request) {
       );
     }
 
-  // ✅ 알라딘 상세정보 보강
-let finalPublisher: string | null = publisher?.trim() ?? null;
-let finalPages: number | null = null;
-let finalGenre: string | null = null;
+    // 알라딘 상세정보 보강
+    let finalPublisher: string | null = publisher?.trim() ?? null;
+    let finalPages: number | null = null;
+    let finalGenre: string | null = null;
 
-if (isbn13) {
-  const bookInfo = await lookupBookInfoByIsbn13(isbn13);
+    if (isbn13) {
+      const bookInfo = await lookupBookInfoByIsbn13(isbn13);
 
-  if (!finalPublisher) {
-    finalPublisher = bookInfo.publisher;
-  }
+      if (!finalPublisher) {
+        finalPublisher = bookInfo.publisher;
+      }
 
-  finalPages = bookInfo.pages;
-  finalGenre = bookInfo.genre;
-}
+      finalPages = bookInfo.pages;
+      finalGenre = bookInfo.genre;
+    }
 
-    // ✅ Notion properties (DB 속성명과 정확히 일치해야 함)
+    // Notion properties
     const properties: any = {
-      제목: { title: [{ text: { content: title } }] },
-      저자: { rich_text: [{ text: { content: author } }] },
-      링크: { url: link },
+      제목: {
+        title: [{ text: { content: title } }],
+      },
+
+      저자: {
+        rich_text: [{ text: { content: author } }],
+      },
+
+      링크: {
+        url: link,
+      },
     };
 
-    // ✅ ISBN13 저장 (노션 속성명이 "ISBN13"이고 텍스트일 때)
+    // ISBN13
     if (isbn13) {
       properties["ISBN13"] = {
         rich_text: [{ text: { content: isbn13 } }],
@@ -140,35 +155,53 @@ if (isbn13) {
         rich_text: [{ text: { content: finalPublisher } }],
       };
     }
+
     // 페이지 수
-if (finalPages !== null) {
-  properties["페이지 수"] = {
-    number: finalPages,
-  };
-}
-// 장르
-if (finalGenre) {
-  properties["장르"] = {
-    rich_text: [{ text: { content: finalGenre } }],
-  };
-}
-    // 표지
-    if (cover) {
-      properties["표지"] = {
-        files: [{ name: "cover", external: { url: cover } }],
+    if (finalPages !== null) {
+      properties["페이지 수"] = {
+        number: finalPages,
       };
     }
 
+    // 장르
+    // Notion의 "장르" 속성이 Select인 경우
+    if (finalGenre) {
+      properties["장르"] = {
+        select: {
+          name: finalGenre,
+        },
+      };
+    }
+
+    // 표지
+    if (cover) {
+      properties["표지"] = {
+        files: [
+          {
+            name: "cover",
+            external: {
+              url: cover,
+            },
+          },
+        ],
+      };
+    }
+
+    // Notion에 페이지 생성
     const notionRes = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
+
       headers: {
-        // ✅ 반드시 백틱 두 개(열고/닫고)
         Authorization: `Bearer ${NOTION_TOKEN}`,
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28",
       },
+
       body: JSON.stringify({
-        parent: { database_id: DATABASE_ID },
+        parent: {
+          database_id: DATABASE_ID,
+        },
+
         properties,
       }),
     });
@@ -177,12 +210,27 @@ if (finalGenre) {
 
     if (!notionRes.ok) {
       console.error("Notion API error:", data);
-      return NextResponse.json({ ok: false, message: "Notion error", error: data }, { status: 500 });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Notion error",
+          error: data,
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error(e);
-    return NextResponse.json({ ok: false, message: "Server error" }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "Server error",
+      },
+      { status: 500 }
+    );
   }
 }
