@@ -277,7 +277,7 @@ export async function POST(req: Request) {
 
     // 페이지 수
     if (finalPages !== null) {
-      properties["페이지 수"] = {
+      properties["페이지"] = {
         number: finalPages,
       };
     }
