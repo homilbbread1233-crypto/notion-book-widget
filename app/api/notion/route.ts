@@ -11,9 +11,20 @@ type SaveBody = {
   isbn13?: string;
 };
 
-async function lookupPublisherByIsbn13(isbn13: string): Promise<string | null> {
+async function lookupBookInfoByIsbn13(isbn13: string): Promise<{
+  publisher: string | null;
+  pages: number | null;
+  genre: string | null;
+}> {
   const ttbKey = process.env.ALADIN_TTB_KEY;
-  if (!ttbKey) return null;
+
+  if (!ttbKey) {
+    return {
+      publisher: null,
+      pages: null,
+      genre: null,
+    };
+  }
 
   const url =
     "https://www.aladin.co.kr/ttb/api/ItemLookUp.aspx" +
@@ -27,16 +38,47 @@ async function lookupPublisherByIsbn13(isbn13: string): Promise<string | null> {
   const text = await res.text();
 
   let json: any;
+
   try {
     json = JSON.parse(text);
   } catch {
     console.error("[ItemLookUp] non-json response:", text.slice(0, 300));
-    return null;
+
+    return {
+      publisher: null,
+      pages: null,
+      genre: null,
+    };
   }
 
   const item = Array.isArray(json?.item) ? json.item[0] : null;
-  const publisher = item?.publisher ? String(item.publisher).trim() : "";
-  return publisher || null;
+
+  if (!item) {
+    return {
+      publisher: null,
+      pages: null,
+      genre: null,
+    };
+  }
+
+  const publisher = item?.publisher
+    ? String(item.publisher).trim()
+    : null;
+
+  const pages =
+    item?.subInfo?.itemPage != null
+      ? Number(item.subInfo.itemPage)
+      : null;
+
+  const genre = item?.categoryName
+    ? String(item.categoryName).trim()
+    : null;
+
+  return {
+    publisher,
+    pages: Number.isFinite(pages) ? pages : null,
+    genre,
+  };
 }
 
 export async function POST(req: Request) {
@@ -62,11 +104,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ 출판사 보강
-    let finalPublisher: string | null = publisher?.trim() ?? null;
+  // ✅ 알라딘 상세정보 보강
+let finalPublisher: string | null = publisher?.trim() ?? null;
+let finalPages: number | null = null;
+let finalGenre: string | null = null;
 
-if (!finalPublisher && isbn13) {
-  finalPublisher = await lookupPublisherByIsbn13(isbn13);
+if (isbn13) {
+  const bookInfo = await lookupBookInfoByIsbn13(isbn13);
+
+  if (!finalPublisher) {
+    finalPublisher = bookInfo.publisher;
+  }
+
+  finalPages = bookInfo.pages;
+  finalGenre = bookInfo.genre;
 }
 
     // ✅ Notion properties (DB 속성명과 정확히 일치해야 함)
@@ -89,7 +140,18 @@ if (!finalPublisher && isbn13) {
         rich_text: [{ text: { content: finalPublisher } }],
       };
     }
-
+    // 페이지 수
+if (finalPages !== null) {
+  properties["페이지 수"] = {
+    number: finalPages,
+  };
+}
+// 장르
+if (finalGenre) {
+  properties["장르"] = {
+    rich_text: [{ text: { content: finalGenre } }],
+  };
+}
     // 표지
     if (cover) {
       properties["표지"] = {
