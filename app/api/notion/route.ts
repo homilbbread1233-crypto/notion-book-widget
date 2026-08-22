@@ -10,7 +10,128 @@ type SaveBody = {
   publisher?: string;
   isbn13?: string;
 };
+normalizeGenre
+function normalizeGenre(categoryName?: string | null): string | null {
+  if (!categoryName) return null;
 
+  const category = categoryName.toLowerCase();
+
+  if (
+    category.includes("소설/시/희곡") ||
+    category.includes("한국소설") ||
+    category.includes("영미소설") ||
+    category.includes("일본소설") ||
+    category.includes("중국소설") ||
+    category.includes("추리") ||
+    category.includes("미스터리") ||
+    category.includes("sf") ||
+    category.includes("판타지")
+  ) {
+    return "소설";
+  }
+
+  if (
+    category.includes("에세이") ||
+    category.includes("수필") ||
+    category.includes("산문")
+  ) {
+    return "에세이";
+  }
+
+  if (
+    category.includes("인문") ||
+    category.includes("철학") ||
+    category.includes("심리학") ||
+    category.includes("종교")
+  ) {
+    return "인문";
+  }
+
+  if (
+    category.includes("경제경영") ||
+    category.includes("재테크") ||
+    category.includes("투자") ||
+    category.includes("주식") ||
+    category.includes("경영")
+  ) {
+    return "경제경영";
+  }
+
+  if (
+    category.includes("자기계발") ||
+    category.includes("자기개발")
+  ) {
+    return "자기계발";
+  }
+
+  if (
+    category.includes("역사") ||
+    category.includes("한국사") ||
+    category.includes("세계사")
+  ) {
+    return "역사";
+  }
+
+  if (
+    category.includes("사회과학") ||
+    category.includes("사회학") ||
+    category.includes("정치")
+  ) {
+    return "사회과학";
+  }
+
+  if (
+    category.includes("과학") ||
+    category.includes("수학") ||
+    category.includes("물리") ||
+    category.includes("화학") ||
+    category.includes("생명과학")
+  ) {
+    return "과학";
+  }
+
+  if (
+    category.includes("예술") ||
+    category.includes("대중문화") ||
+    category.includes("미술") ||
+    category.includes("음악") ||
+    category.includes("영화")
+  ) {
+    return "예술";
+  }
+
+  if (category.includes("여행")) {
+    return "여행";
+  }
+
+  if (
+    category.includes("요리") ||
+    category.includes("음식")
+  ) {
+    return "요리";
+  }
+
+  if (
+    category.includes("건강") ||
+    category.includes("취미") ||
+    category.includes("스포츠")
+  ) {
+    return "건강/취미";
+  }
+
+  if (
+    category.includes("어린이") ||
+    category.includes("유아")
+  ) {
+    return "어린이";
+  }
+
+  if (category.includes("청소년")) {
+    return "청소년";
+  }
+
+  return "기타";
+}
 async function lookupBookInfoByIsbn13(isbn13: string): Promise<{
   publisher: string | null;
   pages: number | null;
@@ -70,9 +191,7 @@ async function lookupBookInfoByIsbn13(isbn13: string): Promise<{
       ? Number(item.subInfo.itemPage)
       : null;
 
-  const genre = item?.categoryName
-    ? String(item.categoryName).trim()
-    : null;
+  const genre = normalizeGenre(item?.categoryName);
 
   return {
     publisher,
