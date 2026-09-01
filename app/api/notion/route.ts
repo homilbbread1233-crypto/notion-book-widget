@@ -277,10 +277,16 @@ export async function POST(req: Request) {
 
     // 페이지 수
     if (finalPages !== null) {
-      properties["페이지"] = {
-        number: finalPages,
-      };
-    }
+  properties["페이지"] = {
+    rich_text: [
+      {
+        text: {
+          content: `${finalPages}p`,
+        },
+      },
+    ],
+  };
+}
 
     // 장르
     // Notion의 "장르" 속성이 Select인 경우
