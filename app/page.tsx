@@ -155,12 +155,12 @@ export default function Page() {
         )}
 
         <div style={styles.list}>
-          {books.map((b, idx) => {
-            const key = b.isbn13 || b.link || `${b.title}-${b.author}-${idx}`;
-            const isSaving = savingKey === key;
-
+{books.map((b, index) => {
+  const baseKey = b.isbn13 || b.link || `${b.title}-${b.author}`;
+  const key = `${baseKey}-${index}`;
+  const isSaving = savingKey === key;
             return (
-              <div key={key} style={styles.item}>
+              <div key={`${key}-${index}`} style={styles.item}>
                 <div style={styles.left}>
                   <div style={styles.title} title={b.title}>
                     {b.title}

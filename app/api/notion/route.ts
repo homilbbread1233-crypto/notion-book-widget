@@ -10,193 +10,133 @@ type SaveBody = {
   publisher?: string;
   isbn13?: string;
 };
-normalizeGenre
-function normalizeGenre(categoryName?: string | null): string | null {
-  if (!categoryName) return null;
 
-  const category = categoryName.toLowerCase();
-
-  if (
-    category.includes("소설/시/희곡") ||
-    category.includes("한국소설") ||
-    category.includes("영미소설") ||
-    category.includes("일본소설") ||
-    category.includes("중국소설") ||
-    category.includes("추리") ||
-    category.includes("미스터리") ||
-    category.includes("sf") ||
-    category.includes("판타지")
-  ) {
-    return "소설";
-  }
-
-  if (
-    category.includes("에세이") ||
-    category.includes("수필") ||
-    category.includes("산문")
-  ) {
-    return "에세이";
-  }
-
-  if (
-    category.includes("인문") ||
-    category.includes("철학") ||
-    category.includes("심리학") ||
-    category.includes("종교")
-  ) {
-    return "인문";
-  }
-
-  if (
-    category.includes("경제경영") ||
-    category.includes("재테크") ||
-    category.includes("투자") ||
-    category.includes("주식") ||
-    category.includes("경영")
-  ) {
-    return "경제경영";
-  }
-
-  if (
-    category.includes("자기계발") ||
-    category.includes("자기개발")
-  ) {
-    return "자기계발";
-  }
-
-  if (
-    category.includes("역사") ||
-    category.includes("한국사") ||
-    category.includes("세계사")
-  ) {
-    return "역사";
-  }
-
-  if (
-    category.includes("사회과학") ||
-    category.includes("사회학") ||
-    category.includes("정치")
-  ) {
-    return "사회과학";
-  }
-
-  if (
-    category.includes("과학") ||
-    category.includes("수학") ||
-    category.includes("물리") ||
-    category.includes("화학") ||
-    category.includes("생명과학")
-  ) {
-    return "과학";
-  }
-
-  if (
-    category.includes("예술") ||
-    category.includes("대중문화") ||
-    category.includes("미술") ||
-    category.includes("음악") ||
-    category.includes("영화")
-  ) {
-    return "예술";
-  }
-
-  if (category.includes("여행")) {
-    return "여행";
-  }
-
-  if (
-    category.includes("요리") ||
-    category.includes("음식")
-  ) {
-    return "요리";
-  }
-
-  if (
-    category.includes("건강") ||
-    category.includes("취미") ||
-    category.includes("스포츠")
-  ) {
-    return "건강/취미";
-  }
-
-  if (
-    category.includes("어린이") ||
-    category.includes("유아")
-  ) {
-    return "어린이";
-  }
-
-  if (category.includes("청소년")) {
-    return "청소년";
-  }
-
-  return "기타";
+/**
+ * 이미지 MIME 타입에 맞는 확장자를 결정
+ */
+function getImageExtension(contentType: string): string {
+  if (contentType.includes("png")) return "png";
+  if (contentType.includes("webp")) return "webp";
+  if (contentType.includes("gif")) return "gif";
+  return "jpg";
 }
-async function lookupBookInfoByIsbn13(isbn13: string): Promise<{
-  publisher: string | null;
-  pages: number | null;
-  genre: string | null;
+
+/**
+ * 카카오 표지 이미지를 다운로드한 뒤
+ * Notion File Upload API를 통해 실제 파일로 업로드
+ */
+async function uploadCoverToNotion(
+  coverUrl: string,
+  notionToken: string
+): Promise<{
+  id: string;
+  filename: string;
 }> {
-  const ttbKey = process.env.ALADIN_TTB_KEY;
+  // 1. 카카오 표지 이미지 다운로드
+  const imageRes = await fetch(coverUrl, {
+    cache: "no-store",
+  });
 
-  if (!ttbKey) {
-    return {
-      publisher: null,
-      pages: null,
-      genre: null,
-    };
+  if (!imageRes.ok) {
+    throw new Error(
+      `Cover download failed: ${imageRes.status}`
+    );
   }
 
-  const url =
-    "https://www.aladin.co.kr/ttb/api/ItemLookUp.aspx" +
-    `?ttbkey=${encodeURIComponent(ttbKey)}` +
-    `&itemIdType=ISBN13` +
-    `&ItemId=${encodeURIComponent(isbn13)}` +
-    `&output=js` +
-    `&Version=20131101`;
+  const contentType =
+    imageRes.headers.get("content-type") || "image/jpeg";
 
-  const res = await fetch(url, { cache: "no-store" });
-  const text = await res.text();
-
-  let json: any;
-
-  try {
-    json = JSON.parse(text);
-  } catch {
-    console.error("[ItemLookUp] non-json response:", text.slice(0, 300));
-
-    return {
-      publisher: null,
-      pages: null,
-      genre: null,
-    };
+  if (!contentType.startsWith("image/")) {
+    throw new Error(
+      `Cover is not an image: ${contentType}`
+    );
   }
 
-  const item = Array.isArray(json?.item) ? json.item[0] : null;
+  const imageBuffer = await imageRes.arrayBuffer();
 
-  if (!item) {
-    return {
-      publisher: null,
-      pages: null,
-      genre: null,
-    };
+  const extension = getImageExtension(contentType);
+  const filename = `cover.${extension}`;
+
+  // 2. Notion에 File Upload 객체 생성
+  const createUploadRes = await fetch(
+    "https://api.notion.com/v1/file_uploads",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${notionToken}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2026-03-11",
+      },
+      body: JSON.stringify({
+        mode: "single_part",
+        filename,
+        content_type: contentType,
+      }),
+    }
+  );
+
+  const createUploadData = await createUploadRes
+    .json()
+    .catch(() => ({} as any));
+
+  if (!createUploadRes.ok) {
+    console.error(
+      "[Notion File Upload create error]",
+      createUploadData
+    );
+
+    throw new Error(
+      `Notion file upload creation failed: ${createUploadRes.status}`
+    );
   }
 
-  const publisher = item?.publisher
-    ? String(item.publisher).trim()
-    : null;
+  const fileUploadId = createUploadData?.id;
 
-  const pages =
-    item?.subInfo?.itemPage != null
-      ? Number(item.subInfo.itemPage)
-      : null;
+  if (!fileUploadId) {
+    throw new Error("Missing Notion file upload ID");
+  }
 
-  const genre = normalizeGenre(item?.categoryName);
+  // 3. 실제 이미지 파일 전송
+  const formData = new FormData();
+
+  formData.append(
+    "file",
+    new Blob([imageBuffer], {
+      type: contentType,
+    }),
+    filename
+  );
+
+  const sendUploadRes = await fetch(
+    `https://api.notion.com/v1/file_uploads/${fileUploadId}/send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${notionToken}`,
+        "Notion-Version": "2026-03-11",
+      },
+      body: formData,
+    }
+  );
+
+  const sendUploadData = await sendUploadRes
+    .json()
+    .catch(() => ({} as any));
+
+  if (!sendUploadRes.ok) {
+    console.error(
+      "[Notion File Upload send error]",
+      sendUploadData
+    );
+
+    throw new Error(
+      `Notion file upload send failed: ${sendUploadRes.status}`
+    );
+  }
 
   return {
-    publisher,
-    pages: Number.isFinite(pages) ? pages : null,
-    genre,
+    id: fileUploadId,
+    filename,
   };
 }
 
@@ -207,53 +147,63 @@ export async function POST(req: Request) {
     const NOTION_TOKEN = process.env.NOTION_TOKEN;
     const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 
+    // 환경변수 확인
     if (!NOTION_TOKEN) {
       return NextResponse.json(
-        { ok: false, message: "Missing NOTION_TOKEN" },
+        {
+          ok: false,
+          message: "Missing NOTION_TOKEN",
+        },
         { status: 500 }
       );
     }
 
     if (!DATABASE_ID) {
       return NextResponse.json(
-        { ok: false, message: "Missing NOTION_DATABASE_ID" },
+        {
+          ok: false,
+          message: "Missing NOTION_DATABASE_ID",
+        },
         { status: 500 }
       );
     }
 
-    const { title, author, link, cover, publisher, isbn13 } = body;
+    const {
+      title,
+      author,
+      link,
+      cover,
+      publisher,
+      isbn13,
+    } = body;
 
-    if (!title || !author || !link) {
+    // 필수값 확인
+    if (!title || !link) {
       return NextResponse.json(
-        { ok: false, message: "Missing required fields (title/author/link)" },
+        {
+          ok: false,
+          message: "Missing required fields (title/link)",
+        },
         { status: 400 }
       );
     }
 
-    // 알라딘 상세정보 보강
-    let finalPublisher: string | null = publisher?.trim() ?? null;
-    let finalPages: number | null = null;
-    let finalGenre: string | null = null;
+    const finalPublisher =
+      publisher?.trim() || null;
 
-    if (isbn13) {
-      const bookInfo = await lookupBookInfoByIsbn13(isbn13);
-
-      if (!finalPublisher) {
-        finalPublisher = bookInfo.publisher;
-      }
-
-      finalPages = bookInfo.pages;
-      finalGenre = bookInfo.genre;
-    }
-
-    // Notion properties
+    /**
+     * 먼저 표지를 제외한 기본 속성으로
+     * Notion 페이지를 생성
+     */
     const properties: any = {
       제목: {
-        title: [{ text: { content: title } }],
-      },
-
-      저자: {
-        rich_text: [{ text: { content: author } }],
+        title: [
+          {
+            text: {
+              content: title,
+            },
+          },
+        ],
       },
 
       링크: {
@@ -261,80 +211,81 @@ export async function POST(req: Request) {
       },
     };
 
-    // ISBN13
-    if (isbn13) {
-      properties["ISBN13"] = {
-        rich_text: [{ text: { content: isbn13 } }],
-      };
-    }
-
-    // 출판사
-    if (finalPublisher) {
-      properties["출판사"] = {
-        rich_text: [{ text: { content: finalPublisher } }],
-      };
-    }
-
-    // 페이지 수
-    if (finalPages !== null) {
-  properties["페이지"] = {
-    rich_text: [
-      {
-        text: {
-          content: `${finalPages}p`,
-        },
-      },
-    ],
-  };
-}
-
-    // 장르
-    // Notion의 "장르" 속성이 Select인 경우
-    if (finalGenre) {
-      properties["장르"] = {
-        select: {
-          name: finalGenre,
-        },
-      };
-    }
-
-    // 표지
-    if (cover) {
-      properties["표지"] = {
-        files: [
+    // 저자
+    if (author?.trim()) {
+      properties["저자"] = {
+        rich_text: [
           {
-            name: "cover",
-            external: {
-              url: cover,
+            text: {
+              content: author.trim(),
             },
           },
         ],
       };
     }
 
-    // Notion에 페이지 생성
-    const notionRes = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
+    // ISBN13
+    if (isbn13?.trim()) {
+      properties["ISBN13"] = {
+        rich_text: [
+          {
+            text: {
+              content: isbn13.trim(),
+            },
+          },
+        ],
+      };
+    }
 
-      headers: {
-        Authorization: `Bearer ${NOTION_TOKEN}`,
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-      },
+    // 출판사
+    if (finalPublisher) {
+      properties["출판사"] = {
+        rich_text: [
+          {
+            text: {
+              content: finalPublisher,
+            },
+          },
+        ],
+      };
+    }
 
-      body: JSON.stringify({
-        parent: {
-          database_id: DATABASE_ID,
+    /**
+     * Notion 페이지 생성
+     *
+     * 기존 프로젝트가 정상 작동하던
+     * 2022-06-28 + database_id 방식을 그대로 유지
+     */
+    const notionRes = await fetch(
+      "https://api.notion.com/v1/pages",
+      {
+        method: "POST",
+
+        headers: {
+          Authorization: `Bearer ${NOTION_TOKEN}`,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
         },
 
-        properties,
-      }),
-    });
+        body: JSON.stringify({
+          parent: {
+            database_id: DATABASE_ID,
+          },
 
-    const data = await notionRes.json().catch(() => ({} as any));
+          properties,
+        }),
+      }
+    );
+
+    const data = await notionRes
+      .json()
+      .catch(() => ({} as any));
 
     if (!notionRes.ok) {
-      console.error("Notion API error:", data);
+      console.error(
+        "Notion API error:",
+        data
+      );
 
       return NextResponse.json(
         {
@@ -346,9 +297,105 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true });
+    const pageId = data?.id;
+
+    if (!pageId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Missing created Notion page ID",
+        },
+        { status: 500 }
+      );
+    }
+
+    /**
+     * 표지가 있는 경우:
+     *
+     * 카카오 이미지
+     * → 서버에서 다운로드
+     * → Notion 실제 파일로 업로드
+     * → 방금 만든 페이지의 "표지" 속성에 연결
+     */
+    let coverUploaded = false;
+    let coverError: string | null = null;
+
+    if (cover?.trim()) {
+      try {
+        const uploadedCover =
+          await uploadCoverToNotion(
+            cover.trim(),
+            NOTION_TOKEN
+          );
+
+        const updateCoverRes = await fetch(
+          `https://api.notion.com/v1/pages/${pageId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${NOTION_TOKEN}`,
+              "Content-Type": "application/json",
+              "Notion-Version": "2026-03-11",
+            },
+            body: JSON.stringify({
+              properties: {
+                표지: {
+                  type: "files",
+                  files: [
+                    {
+                      type: "file_upload",
+                      file_upload: {
+                        id: uploadedCover.id,
+                      },
+                      name: uploadedCover.filename,
+                    },
+                  ],
+                },
+              },
+            }),
+          }
+        );
+
+        const updateCoverData =
+          await updateCoverRes
+            .json()
+            .catch(() => ({} as any));
+
+        if (!updateCoverRes.ok) {
+          console.error(
+            "[Notion cover property update error]",
+            updateCoverData
+          );
+
+          throw new Error(
+            `Notion cover property update failed: ${updateCoverRes.status}`
+          );
+        }
+
+        coverUploaded = true;
+      } catch (coverUploadError: any) {
+        console.error(
+          "[Cover upload error]",
+          coverUploadError
+        );
+
+        coverError =
+          coverUploadError?.message ||
+          "Cover upload failed";
+      }
+    }
+
+    /**
+     * 표지 업로드만 실패하더라도
+     * 이미 저장된 책 데이터는 삭제하지 않음
+     */
+    return NextResponse.json({
+      ok: true,
+      coverUploaded,
+      coverError,
+    });
   } catch (e: any) {
-    console.error(e);
+    console.error("Save error:", e);
 
     return NextResponse.json(
       {

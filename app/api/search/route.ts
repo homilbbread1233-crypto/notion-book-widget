@@ -5,67 +5,108 @@ type Book = {
   author: string;
   link: string;
   cover: string;
+  publisher?: string;
   isbn13?: string;
 };
 
-function pickFirstString(v: any): string {
-  if (typeof v === "string") return v;
-  if (Array.isArray(v)) return typeof v[0] === "string" ? v[0] : "";
-  return "";
+function getIsbn13(isbn: string): string {
+  if (!isbn) return "";
+
+  const values = isbn.trim().split(/\s+/);
+
+  return values.find((value) => /^\d{13}$/.test(value)) ?? "";
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+
     const q = (searchParams.get("q") || "").trim();
+
     if (!q) {
-      return NextResponse.json({ ok: false, message: "q is required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, message: "q is required" },
+        { status: 400 }
+      );
     }
 
-    // ✅ ALADIN_KEY / ALADIN_TTB_KEY 둘 다 허용
-    const ttbKey = (process.env.ALADIN_TTB_KEY || process.env.ALADIN_KEY || "").trim();
-    if (!ttbKey) {
+    const kakaoKey = (
+      process.env.KAKAO_REST_API_KEY || ""
+    ).trim();
+
+    if (!kakaoKey) {
       return NextResponse.json(
-        { ok: false, message: "ALADIN_KEY (or ALADIN_TTB_KEY) is missing in .env.local" },
+        {
+          ok: false,
+          message:
+            "KAKAO_REST_API_KEY is missing in .env.local",
+        },
         { status: 500 }
       );
     }
 
-    const url =
-      `https://www.aladin.co.kr/ttb/api/ItemSearch.aspx` +
-      `?ttbkey=${encodeURIComponent(ttbKey)}` +
-      `&Query=${encodeURIComponent(q)}` +
-      `&QueryType=Title` +
-      `&MaxResults=10` +
-      `&start=1` +
-      `&SearchTarget=Book` +
-      `&output=js` +
-      `&Version=20131101` +
-      `&Cover=MidBig`;
+    const url = new URL(
+      "https://dapi.kakao.com/v3/search/book"
+    );
 
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) {
+    url.searchParams.set("query", q);
+    url.searchParams.set("sort", "accuracy");
+    url.searchParams.set("size", "20");
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `KakaoAK ${kakaoKey}`,
+      },
+      cache: "no-store",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("Kakao API error:", data);
+
       return NextResponse.json(
-        { ok: false, message: `Aladin search failed (${r.status})` },
-        { status: 500 }
+        {
+          ok: false,
+          message: "Kakao Book API error",
+          error: data,
+        },
+        { status: res.status }
       );
     }
 
-    const data = await r.json();
-    const items = Array.isArray(data?.item) ? data.item : [];
+    const documents = Array.isArray(data?.documents)
+      ? data.documents
+      : [];
 
-    const books: Book[] = items.map((it: any) => ({
-      title: pickFirstString(it?.title),
-      author: pickFirstString(it?.author),
-      link: pickFirstString(it?.link),
-      cover: pickFirstString(it?.cover),
-      isbn13: pickFirstString(it?.isbn13) || undefined,
+    const books: Book[] = documents.map((item: any) => ({
+      title: String(item.title ?? "").trim(),
+
+      author: Array.isArray(item.authors)
+        ? item.authors.join(", ")
+        : "",
+
+      link: String(item.url ?? ""),
+
+      cover: String(item.thumbnail ?? ""),
+
+      publisher: String(item.publisher ?? "").trim(),
+
+      isbn13: getIsbn13(String(item.isbn ?? "")),
     }));
 
-    return NextResponse.json({ ok: true, books });
-  } catch (err: any) {
+    return NextResponse.json({
+      ok: true,
+      books,
+    });
+  } catch (error) {
+    console.error("Search error:", error);
+
     return NextResponse.json(
-      { ok: false, message: err?.message ?? String(err) },
+      {
+        ok: false,
+        message: "Server error",
+      },
       { status: 500 }
     );
   }
